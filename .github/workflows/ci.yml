@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (production)
+        run: npx ng build --configuration production
+
+      - name: Test (headless Chrome, with coverage)
+        run: npx ng test --watch=false --browsers=ChromeHeadless --code-coverage
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+
+      - name: Post coverage summary on PR
+        if: github.event_name == 'pull_request'
+        uses: 5monkeys/cobertura-action@v14
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          path: coverage/cobertura-coverage.xml
+          minimum_coverage: 80
+          fail_below_threshold: true
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Deploy to GitHub Pages
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npm run ng -- deploy --base-href=/portfolio/ --name="Michael Liang" --email=mliang1987@gmail.com
